@@ -2,8 +2,14 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="08ae27f2-2242-4caa-bac6-c158f506cc34" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/Milestone_1/templates/userdashboard.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Milestone_1/templates/about.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Milestone_1/templates/features.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Milestone_1/templates/notifications.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Milestone_1/templates/pricing.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Milestone_1/templates/profile.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Milestone_1/data/agrobot.db" beforeDir="false" afterPath="$PROJECT_DIR$/Milestone_1/data/agrobot.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Milestone_1/static/css/style.css" beforeDir="false" afterPath="$PROJECT_DIR$/Milestone_1/static/css/style.css" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -21,17 +27,23 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.app (1).executor": "Run",
-    "Python.app.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "git-widget-placeholder": "main",
-    "settings.editor.selected.configurable": "vcs.Git"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.app (1).executor&quot;: &quot;Run&quot;,
+    &quot;Python.app.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;vcs.Git&quot;
   }
-}]]></component>
+}</component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="E:\AgroBot\Milestone_1\templates" />
+    </key>
+  </component>
   <component name="RunManager" selected="Python.app (1)">
     <configuration name="app (1)" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="AgroBot" />
