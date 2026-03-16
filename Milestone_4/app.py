@@ -24,7 +24,7 @@ from sqlalchemy import func, desc, text, inspect
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from flask_socketio import SocketIO, emit, join_room, leave_room
-
+from datetime import datetime, date, timedelta, timezone
 load_dotenv()
 
 # -------------------------------------------------------------------
@@ -38,7 +38,7 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "super_secret_key_123")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ECHO"] = False
-app.config['WEATHER_API_KEY'] = '3ef0617ee449929347e3c55f2a899e2e'
+app.config['WEATHER_API_KEY'] = '72b6594b33a820f2fa2df11ca725b2c3'
 app.config['WEATHER_API_URL'] = 'https://api.openweathermap.org/data/2.5'
 
 # Database configuration
@@ -646,7 +646,7 @@ def analyze_with_gemini(image_path, user_message=""):
 
         parts = [{"text": prompt}, {"inline_data": {"mime_type": mime_type, "data": image_b64}}]
 
-        models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash']
+        models_to_try = ['gemini-2.5-flash,gemini-1.5-flash']
         for model_name in models_to_try:
             try:
                 print(f"  🤖 Trying vision model: {model_name}")
@@ -745,7 +745,7 @@ def ask_gemini(user_input, user_profile=None):
 
     try:
         if hasattr(gemini_client, 'models'):
-            models_to_try = ['gemini-2.5-flash']
+            models_to_try = ['gemini-2.5-flash,gemini-1.5-flash']
             for model_name in models_to_try:
                 try:
                     print(f"  🤖 Trying model: {model_name}")
@@ -888,7 +888,7 @@ def list_gemini_models():
         if not GEMINI_ENABLED or not gemini_client:
             return jsonify({"success": False, "message": "Gemini not enabled"})
         available_models = []
-        test_models = ['gemini-2.5-flash']
+        test_models = ['gemini-2.5-flash,gemini-1.5-flash']
         for model_name in test_models:
             try:
                 response = gemini_client.models.generate_content(model=model_name, contents="Say 'test'")
@@ -1625,29 +1625,75 @@ def market_prices():
     return render_template('market.html')
 
 
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import func
+
 @app.route('/api/market-prices', methods=['GET'])
 @login_required
 def get_market_prices():
     try:
-        prices = MarketPrice.query.order_by(MarketPrice.date.desc()).limit(10).all()
-        price_list = [{
-            "crop": p.crop_name,
-            "price": p.price,
-            "unit": p.unit,
-            "market": p.market_name,
-            "region": p.region,
-            "date": p.date.isoformat() if p.date else None
-        } for p in prices]
-        return jsonify({"success": True, "prices": price_list})
+        # Get the latest prices (e.g., last 30 days, or most recent per crop)
+        # For simplicity, we'll take the 20 most recent records
+        prices = MarketPrice.query.order_by(MarketPrice.date.desc()).limit(20).all()
+
+        price_list = []
+        for p in prices:
+            # Compute derived fields (replace with your own logic)
+            # Example: min = 95% of price, max = 105% of price
+            min_price = round(p.price * 0.95, 2)
+            max_price = round(p.price * 1.05, 2)
+            # Change: you'd need previous price; we'll use a placeholder
+            change = "+2.5"  # Replace with real calculation
+            # Demand: you can determine based on price or add a column
+            demand = "High" if p.price > 50 else "Medium"  # Example
+            # Category: you may need to add this to the model or infer
+            category = "grains" if "wheat" in p.crop_name.lower() else "other"
+
+            price_list.append({
+                "crop": p.crop_name,
+                "market": p.market_name,
+                "min": min_price,
+                "max": max_price,
+                "avg": p.price,
+                "change": change,
+                "demand": demand,
+                "category": category,
+                "region": p.region,
+                "date": p.date.isoformat() if p.date else None
+            })
+
+        # Quick stats – compute from your data (example)
+        if prices:
+            highest = max(prices, key=lambda x: x.price)
+            stats = {
+                "highest_price": {"crop": highest.crop_name, "price": highest.price},
+                "most_volatile": {"crop": "Soybean", "change": -3.2},  # placeholder
+                "best_buy": {"crop": "Corn", "change": 1.8},           # placeholder
+                "demand_trend": {"crop": "Rice", "demand": "High"}     # placeholder
+            }
+        else:
+            stats = {}
+
+        # Trends – you can generate dummy or real data
+        trends = {
+            "labels": [f"Day {i+1}" for i in range(30)],
+            "values": [2150 + i*10 for i in range(30)]  # dummy
+        }
+
+        return jsonify({
+            "success": True,
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "prices": price_list,
+            "stats": stats,
+            "trends": trends
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
-
 # -------------------------------------------------------------------
 # PEST DATABASE
 # -------------------------------------------------------------------
 
-@app.route('/pest_database.html')
+@app.route('/pest-database')
 @login_required
 def pest_database():
     return render_template('pest_database.html')
@@ -1796,12 +1842,13 @@ def search_threads():
     q = request.args.get('q', '').strip()
     if not q:
         return redirect(url_for('community_forum'))
+
     threads = ForumThread.query.filter(
         (ForumThread.title.ilike(f'%{q}%')) |
         (ForumThread.content.ilike(f'%{q}%'))
     ).order_by(ForumThread.updated_at.desc()).all()
-    return render_template('community_search.html', threads=threads, query=q)
 
+    return render_template('community_search.html', threads=threads, query=q)
 
 @app.route('/debug/categories')
 @login_required
@@ -1809,7 +1856,15 @@ def debug_categories():
     cats = ForumCategory.query.all()
     return jsonify([{'id': c.id, 'name': c.name} for c in cats])
 
-
+@app.route('/community/category/<int:cat_id>')
+@login_required
+def category_view(cat_id):
+    category = ForumCategory.query.get_or_404(cat_id)
+    threads = ForumThread.query.filter_by(category_id=cat_id).order_by(
+        ForumThread.is_pinned.desc(),
+        ForumThread.updated_at.desc()
+    ).all()
+    return render_template('category_threads.html', category=category, threads=threads)
 # -------------------------------------------------------------------
 # COMMUNITY LIVE CHAT
 # -------------------------------------------------------------------
@@ -2699,42 +2754,68 @@ def admin_delete_user(user_id):
 @admin_required
 def admin_analytics():
     try:
-        user_growth = db.session.query(
+        # User growth over time
+        user_growth_data = db.session.query(
             func.date(User.created_at).label('date'),
             func.count(User.id).label('count')
         ).group_by(func.date(User.created_at)).order_by(func.date(User.created_at)).all()
-        chat_activity = db.session.query(
+        user_growth_labels = [str(row.date) for row in user_growth_data]  # convert date to string
+        user_growth_counts = [row.count for row in user_growth_data]
+
+        # Chat activity over time
+        chat_activity_data = db.session.query(
             func.date(ChatHistory.created_at).label('date'),
             func.count(ChatHistory.id).label('count')
         ).group_by(func.date(ChatHistory.created_at)).order_by(func.date(ChatHistory.created_at)).all()
-        top_crops = db.session.query(
+        chat_activity_labels = [str(row.date) for row in chat_activity_data]
+        chat_activity_counts = [row.count for row in chat_activity_data]
+
+        # Top crops
+        top_crops_data = db.session.query(
             User.primary_crop,
             func.count(User.id).label('user_count')
         ).filter(User.primary_crop.isnot(None), User.primary_crop != '').group_by(User.primary_crop).order_by(desc('user_count')).limit(10).all()
+        top_crops_labels = [row[0] or 'Unknown' for row in top_crops_data]
+        top_crops_counts = [row[1] for row in top_crops_data]
+
+        # Other metrics
         total_users = User.query.count()
         active_users = db.session.query(
             func.count(func.distinct(ChatHistory.user_id))
         ).filter(ChatHistory.created_at >= datetime.now() - timedelta(days=30)).scalar() or 0
         avg_chats_per_user = db.session.query(
-            func.avg(db.session.query(
-                func.count(ChatHistory.id)
-            ).filter(ChatHistory.created_at >= datetime.now() - timedelta(days=30)).group_by(ChatHistory.user_id).subquery().c.count)
+            func.avg(
+                db.session.query(
+                    func.count(ChatHistory.id)
+                ).filter(ChatHistory.created_at >= datetime.now() - timedelta(days=30)).group_by(ChatHistory.user_id).subquery().c.count
+            )
         ).scalar() or 0
         total_chats = ChatHistory.query.count()
         total_images = ImageAnalysis.query.count()
-        return render_template("admin/analytics.html",
-                               user_growth=user_growth,
-                               chat_activity=chat_activity,
-                               top_crops=top_crops,
-                               total_users=total_users,
-                               active_users=active_users,
-                               avg_chats_per_user=round(avg_chats_per_user, 2),
-                               total_chats=total_chats,
-                               total_images=total_images)
+
+        return render_template(
+            "admin/analytics.html",
+            # Original data (for tables or fallback)
+            user_growth=user_growth_data,
+            chat_activity=chat_activity_data,
+            top_crops=top_crops_data,
+            # JSON-encoded data for charts
+            user_growth_labels=json.dumps(user_growth_labels),
+            user_growth_counts=json.dumps(user_growth_counts),
+            chat_activity_labels=json.dumps(chat_activity_labels),
+            chat_activity_counts=json.dumps(chat_activity_counts),
+            top_crops_labels=json.dumps(top_crops_labels),
+            top_crops_counts=json.dumps(top_crops_counts),
+            # Metrics
+            total_users=total_users,
+            active_users=active_users,
+            avg_chats_per_user=round(avg_chats_per_user, 2),
+            total_chats=total_chats,
+            total_images=total_images
+        )
     except Exception as e:
         flash(f"Error loading analytics: {str(e)}", "danger")
         return redirect(url_for('admin_dashboard'))
-
 
 @app.route("/admin/export/users")
 @login_required
@@ -2810,7 +2891,8 @@ def admin_knowledge_base():
         market_prices = MarketPrice.query.order_by(MarketPrice.date.desc()).limit(50).all()
         return render_template("admin/knowledge_base.html",
                                farming_tips=farming_tips,
-                               market_prices=market_prices)
+                               market_prices=market_prices,
+                               today=date.today().isoformat())
     except Exception as e:
         flash(f"Error loading knowledge base: {str(e)}", "danger")
         return redirect(url_for('admin_dashboard'))
@@ -2844,6 +2926,45 @@ def admin_add_farming_tip():
         flash(f"Error adding farming tip: {str(e)}", "danger")
     return redirect(url_for('admin_knowledge_base'))
 
+@app.route("/admin/farming-tips/edit/<int:tip_id>", methods=["GET", "POST"])
+@login_required
+@admin_required
+def admin_edit_farming_tip(tip_id):
+    tip = FarmingTip.query.get_or_404(tip_id)
+    if request.method == "POST":
+        try:
+            tip.title = request.form.get("title", "").strip()
+            tip.content = request.form.get("content", "").strip()
+            tip.category = request.form.get("category", "general")
+            tip.crop_type = request.form.get("crop_type")
+            tip.language = request.form.get("language", "en")
+            if not tip.title or not tip.content:
+                flash("Title and content are required", "danger")
+                return redirect(url_for('admin_edit_farming_tip', tip_id=tip_id))
+            db.session.commit()
+            flash("Farming tip updated successfully", "success")
+            return redirect(url_for('admin_knowledge_base'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error updating farming tip: {str(e)}", "danger")
+            return redirect(url_for('admin_edit_farming_tip', tip_id=tip_id))
+    # GET request: show edit form
+    return render_template("admin/edit_farming_tip.html", tip=tip)
+
+
+@app.route("/admin/farming-tips/delete/<int:tip_id>", methods=["POST"])
+@login_required
+@admin_required
+def admin_delete_farming_tip(tip_id):
+    try:
+        tip = FarmingTip.query.get_or_404(tip_id)
+        db.session.delete(tip)
+        db.session.commit()
+        flash("Farming tip deleted successfully", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error deleting farming tip: {str(e)}", "danger")
+    return redirect(url_for('admin_knowledge_base'))
 
 @app.route("/admin/market-prices/add", methods=["POST"])
 @login_required
@@ -2865,7 +2986,8 @@ def admin_add_market_price():
             region=region,
             price=price,
             unit=unit,
-            source=source
+            source=source,
+            date=date.today()   # <-- ADD THIS LINE
         )
         db.session.add(price_entry)
         db.session.commit()
@@ -2875,6 +2997,49 @@ def admin_add_market_price():
         flash(f"Error adding market price: {str(e)}", "danger")
     return redirect(url_for('admin_knowledge_base'))
 
+@app.route("/admin/market-prices/edit/<int:price_id>", methods=["GET", "POST"])
+@login_required
+@admin_required
+def admin_edit_market_price(price_id):
+    price = MarketPrice.query.get_or_404(price_id)
+    if request.method == "POST":
+        try:
+            price.crop_name = request.form.get("crop_name", "").strip()
+            price.market_name = request.form.get("market_name", "").strip()
+            price.region = request.form.get("region", "").strip()
+            price.price = request.form.get("price", type=float)
+            price.unit = request.form.get("unit", "kg")
+            price.source = request.form.get("source", "")
+            date_str = request.form.get("date")
+            if not price.crop_name or not price.price:
+                flash("Crop name and price are required", "danger")
+                return redirect(url_for('admin_edit_market_price', price_id=price_id))
+            if date_str:
+                price.date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            db.session.commit()
+            flash("Market price updated successfully", "success")
+            return redirect(url_for('admin_knowledge_base'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error updating market price: {str(e)}", "danger")
+            return redirect(url_for('admin_edit_market_price', price_id=price_id))
+    # GET request: show edit form
+    return render_template("admin/edit_market_price.html", price=price)
+
+
+@app.route("/admin/market-prices/delete/<int:price_id>", methods=["POST"])
+@login_required
+@admin_required
+def admin_delete_market_price(price_id):
+    try:
+        price = MarketPrice.query.get_or_404(price_id)
+        db.session.delete(price)
+        db.session.commit()
+        flash("Market price deleted successfully", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error deleting market price: {str(e)}", "danger")
+    return redirect(url_for('admin_knowledge_base'))
 
 @app.route("/admin/clear-chats", methods=["POST"])
 @login_required
@@ -2896,19 +3061,28 @@ def admin_clear_all_chats():
 @admin_required
 def admin_system_health():
     try:
+        # Database connection test
         db_status = "Healthy"
         try:
-            db.session.execute("SELECT 1")
+            db.session.execute(text("SELECT 1"))
         except Exception as e:
             db_status = f"Error: {str(e)}"
+
+        # File system checks
         upload_folder_exists = os.path.exists(app.config['UPLOAD_FOLDER'])
         upload_folder_writable = os.access(app.config['UPLOAD_FOLDER'], os.W_OK)
-        gemini_status = {
-            "enabled": GEMINI_ENABLED,
-            "api_key_configured": bool(GEMINI_API_KEY and GEMINI_API_KEY != "not_set"),
-            "has_client": gemini_client is not None,
-            "status": "Working" if GEMINI_ENABLED else "Disabled"
-        }
+
+        # Gemini API status – create a simple string and booleans
+        gemini_configured = bool(GEMINI_API_KEY and GEMINI_API_KEY != "not_set")
+        gemini_working = GEMINI_ENABLED
+        if gemini_working:
+            gemini_status_str = "Working"
+        elif not gemini_configured:
+            gemini_status_str = "Not Configured"
+        else:
+            gemini_status_str = "Error"
+
+        # Disk usage
         total, used, free = shutil.disk_usage("/")
         disk_usage = {
             'total_gb': round(total / (1024 ** 3), 2),
@@ -2916,16 +3090,40 @@ def admin_system_health():
             'free_gb': round(free / (1024 ** 3), 2),
             'percent_used': round((used / total) * 100, 2)
         }
-        return render_template("admin/system_health.html",
-                               db_status=db_status,
-                               upload_folder_exists=upload_folder_exists,
-                               upload_folder_writable=upload_folder_writable,
-                               gemini_status=gemini_status,
-                               disk_usage=disk_usage)
+
+        # Database counts
+        user_count = User.query.count()
+        chat_count = ChatHistory.query.count()
+        image_count = ImageAnalysis.query.count()
+        tip_count = FarmingTip.query.count()
+        profile_pics_count = User.query.filter(User.profile_picture.isnot(None)).count()
+
+        # Upload folder path (as string)
+        upload_folder_path = app.config['UPLOAD_FOLDER']
+
+        # Current time
+        now = datetime.now()
+
+        return render_template(
+            "admin/system_health.html",
+            db_status=db_status,
+            gemini_status=gemini_status_str,          # now a simple string
+            gemini_configured=gemini_configured,       # boolean for key status
+            upload_folder_exists=upload_folder_exists,
+            upload_folder_writable=upload_folder_writable,
+            upload_folder_path=upload_folder_path,
+            disk_usage=disk_usage,
+            user_count=user_count,
+            chat_count=chat_count,
+            image_count=image_count,
+            tip_count=tip_count,
+            profile_pics_count=profile_pics_count,
+            now=now,                                    # datetime object for last checked
+            GEMINI_API_KEY=GEMINI_API_KEY               # only if you need key length (optional)
+        )
     except Exception as e:
         flash(f"Error checking system health: {str(e)}", "danger")
         return redirect(url_for('admin_dashboard'))
-
 
 @app.route("/admin/delete-chat/<int:chat_id>", methods=["POST"])
 @login_required
