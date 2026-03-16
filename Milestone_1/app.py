@@ -847,7 +847,7 @@ def crop_planner():
     return render_template('crop_planner.html')
 
 
-@app.route('/pest-database')
+@app.route('/pest_database.html')
 @login_required
 def pest_database():
     return render_template('pest_database.html')
